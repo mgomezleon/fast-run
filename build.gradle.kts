@@ -5,14 +5,14 @@ plugins {
 }
 
 group = "com.example"
-version = "1.0.4"
+version = "1.0.5"
 
 repositories {
     mavenCentral()
 }
 
 intellij {
-    version.set("2023.2.5")
+    version.set("2024.1")  // Updated for new Terminal API compatibility
     type.set("IC") // Target IDE Platform
     plugins.set(listOf("terminal"))
 }
@@ -29,7 +29,7 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("232")
-        untilBuild.set("252.*")
+        untilBuild.set("253.*")  // Extended support for 2025.3
     }
 
     signPlugin {

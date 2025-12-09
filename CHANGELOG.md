@@ -2,6 +2,27 @@
 
 All notable changes to the "Fast Run - Terminal Command Manager" plugin will be documented in this file.
 
+## [1.0.5] - 2025-12-09
+
+### Fixed
+- 🔧 **Terminal API Compatibility**: Full support for IntelliJ 2025.2+ with the new "Reworked 2025" Terminal
+  - Added fallback mechanism: tries new Terminal API first, falls back to legacy API for older versions
+  - Uses `TerminalWidget.sendCommandToExecute()` for IDE 2025.2+
+  - Maintains backward compatibility with `TerminalView.createLocalShellWidget()` for older IDEs
+- 🖥️ **Windows Environment Variables**: Fixed environment variable export on Windows
+  - Now correctly uses `set VAR=value` on Windows instead of Unix-style `export`
+  - Cross-platform detection for proper environment variable syntax
+
+### Changed
+- Extended IDE compatibility range to 2025.3 (build 253.*)
+- Updated development platform to 2024.1 for better API access
+- Improved error logging for Terminal API failures
+
+### Technical
+- Implemented reflection-based API detection for forward compatibility
+- Added `findTerminalWidget()` helper for component hierarchy traversal
+- Separated legacy and new terminal execution into distinct methods
+
 ## [1.0.4] - 2025-10-27
 
 ### Added
