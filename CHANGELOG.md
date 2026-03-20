@@ -2,6 +2,30 @@
 
 All notable changes to the "Fast Run - Terminal Command Manager" plugin will be documented in this file.
 
+## [1.1.0] - 2026-03-20
+
+### Added
+- Redesigned Command Manager UI with modern master-detail layout
+  - Left sidebar with command list, search, and action buttons
+  - Right content area with tabbed interface (Command, Environment, Templates)
+  - Improved command list cell renderer with name, preview, and favorite indicator
+  - Templates tab with categorized browsing and one-click apply
+- Click-to-preview: selecting a command in the list auto-populates the editor
+
+### Changed
+- Migrated from Gradle IntelliJ Plugin 1.x to IntelliJ Platform Gradle Plugin 2.x (v2.11.0)
+- Updated Kotlin from 1.9.21 to 1.9.25
+- Updated Gradle from 8.4 to 8.13
+- Extended IDE compatibility to IntelliJ 2026.1 (build 261.*)
+- Fixed `ActionUpdateThread` deprecation warnings across all actions
+- Vendor updated to GenWave (https://genwave.ai/)
+
+### Technical
+- Proper `ActionUpdateThread.BGT` implementation for all action classes
+- Removed deprecated `instrumentationTools()` call
+- File-level `@Suppress("DEPRECATION")` for legacy Terminal API fallback
+- Fixed unnecessary safe call warning in legacy terminal path
+
 ## [1.0.5] - 2025-12-09
 
 ### Fixed

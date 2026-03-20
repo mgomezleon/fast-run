@@ -1,5 +1,8 @@
+@file:Suppress("DEPRECATION")
+
 package com.example.terminalicon
 
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
@@ -143,7 +146,7 @@ class TerminalIconAction : AnAction() {
                 val terminalView = TerminalView.getInstance(project)
                 val shellWidget = terminalView.createLocalShellWidget(workingDir, savedCommand.name)
 
-                shellWidget?.let { widget ->
+                shellWidget.let { widget ->
                     // Set environment variables first
                     if (savedCommand.environmentVariables.isNotEmpty()) {
                         val isWindows = System.getProperty("os.name").lowercase().contains("windows")
@@ -168,6 +171,8 @@ class TerminalIconAction : AnAction() {
             }
         }
     }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
         // Enable the action only when a project is open

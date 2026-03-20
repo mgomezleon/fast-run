@@ -8,11 +8,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.table.JBTable
-import java.awt.BorderLayout
-import java.awt.Dimension
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import java.awt.FlowLayout
+import java.awt.*
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
@@ -26,11 +22,11 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
 
     // Editor Fields
     private val nameField = JTextField()
-    private val commandArea = JTextArea(5, 30)
+    private val commandArea = JTextArea(8, 30)
     private val workingDirField = TextFieldWithBrowseButton()
     private val iconComboBox = JComboBox(arrayOf("default", "green", "blue", "red", "yellow", "purple"))
     private val shortcutField = JTextField()
-    private val favoriteCheckBox = JCheckBox("★ Favorite")
+    private val favoriteCheckBox = JCheckBox("Favorite")
 
     // Environment Variables Table
     private val envVarsTableModel = DefaultTableModel(arrayOf("Variable", "Value"), 0)
@@ -38,7 +34,11 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
 
     // Search
     private val searchField = JTextField()
-    private val showFavoritesOnly = JCheckBox("⭐ Favorites Only")
+    private val showFavoritesOnly = JCheckBox("Favorites Only")
+
+    // Editor buttons (kept as fields so we can reference them)
+    private val saveButton = JButton("Save")
+    private val cancelEditButton = JButton("Cancel Edit")
 
     // State
     private var editingCommand: SavedCommand? = null
@@ -51,6 +51,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         loadCommands()
         setupWorkingDirField()
         setupEnvVarsTable()
+        setupListSelectionListener()
     }
 
     private fun setupWorkingDirField() {
@@ -65,138 +66,441 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
 
     private fun setupEnvVarsTable() {
         envVarsTable.setShowGrid(true)
-        envVarsTable.preferredScrollableViewportSize = Dimension(400, 100)
+        envVarsTable.rowHeight = 24
+    }
+
+    private fun setupListSelectionListener() {
+        commandList.addListSelectionListener {
+            if (!it.valueIsAdjusting) {
+                val selected = commandList.selectedValue
+                if (selected != null && editingCommand == null) {
+                    populateEditorFromCommand(selected)
+                }
+            }
+        }
+    }
+
+    private fun populateEditorFromCommand(command: SavedCommand) {
+        nameField.text = command.name
+        commandArea.text = command.commands.joinToString("\n")
+        workingDirField.text = command.workingDirectory
+        iconComboBox.selectedItem = command.icon
+        shortcutField.text = command.keyboardShortcut
+        favoriteCheckBox.isSelected = command.isFavorite
+        setEnvironmentVariablesInTable(command.environmentVariables)
     }
 
     override fun createCenterPanel(): JComponent {
-        val panel = JPanel(BorderLayout(10, 10))
-        panel.preferredSize = Dimension(900, 700)
+        val mainPanel = JPanel(BorderLayout())
+        mainPanel.preferredSize = Dimension(960, 640)
 
-        // Top panel - Command Editor
-        val topPanel = createCommandEditorPanel()
+        // Split pane: left sidebar | right editor
+        val splitPane = JSplitPane(JSplitPane.HORIZONTAL_SPLIT)
+        splitPane.dividerSize = 1
+        splitPane.dividerLocation = 300
+        splitPane.isOneTouchExpandable = false
 
-        // Middle panel - Commands List
-        val middlePanel = createCommandListPanel()
+        splitPane.leftComponent = createLeftSidebar()
+        splitPane.rightComponent = createRightPanel()
 
-        // Bottom panel - History
-        val bottomPanel = createHistoryPanel()
+        mainPanel.add(splitPane, BorderLayout.CENTER)
 
-        panel.add(topPanel, BorderLayout.NORTH)
-        panel.add(middlePanel, BorderLayout.CENTER)
-        panel.add(bottomPanel, BorderLayout.SOUTH)
+        return mainPanel
+    }
+
+    // ==================== LEFT SIDEBAR ====================
+
+    private fun createLeftSidebar(): JPanel {
+        val sidebar = JPanel(BorderLayout(0, 0))
+        sidebar.minimumSize = Dimension(260, 0)
+        sidebar.border = BorderFactory.createMatteBorder(0, 0, 0, 1, UIManager.getColor("Separator.separatorColor") ?: Color.GRAY)
+
+        // Top: Search bar
+        val searchPanel = JPanel(BorderLayout(6, 0))
+        searchPanel.border = BorderFactory.createEmptyBorder(8, 10, 6, 10)
+
+        searchField.putClientProperty("JTextField.placeholderText", "Search commands...")
+        searchPanel.add(searchField, BorderLayout.CENTER)
+        showFavoritesOnly.toolTipText = "Show favorites only"
+        searchPanel.add(showFavoritesOnly, BorderLayout.EAST)
+
+        showFavoritesOnly.addActionListener { filterCommands() }
+        searchField.document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent?) = filterCommands()
+            override fun removeUpdate(e: DocumentEvent?) = filterCommands()
+            override fun changedUpdate(e: DocumentEvent?) = filterCommands()
+        })
+
+        sidebar.add(searchPanel, BorderLayout.NORTH)
+
+        // Center: Command list
+        commandList.selectionMode = ListSelectionModel.SINGLE_SELECTION
+        commandList.fixedCellHeight = 36
+        commandList.cellRenderer = CommandListCellRenderer()
+
+        val listScroll = JBScrollPane(commandList)
+        listScroll.border = BorderFactory.createEmptyBorder()
+        sidebar.add(listScroll, BorderLayout.CENTER)
+
+        // Bottom: Action buttons + History
+        val bottomPanel = JPanel(BorderLayout(0, 0))
+
+        // Action buttons
+        val actionPanel = JPanel(GridLayout(2, 1, 0, 2))
+        actionPanel.border = BorderFactory.createEmptyBorder(6, 10, 4, 10)
+
+        val topActions = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+        val runButton = JButton("Run")
+        val newButton = JButton("New")
+        val deleteButton = JButton("Delete")
+
+        runButton.addActionListener { runSelectedCommand() }
+        newButton.addActionListener { clearFields() }
+        deleteButton.addActionListener { deleteSelectedCommand() }
+
+        topActions.add(runButton)
+        topActions.add(newButton)
+        topActions.add(deleteButton)
+
+        val bottomActions = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+        val importButton = JButton("Import")
+        val exportButton = JButton("Export")
+        val favButton = JButton("Toggle Fav")
+
+        importButton.addActionListener { importCommands() }
+        exportButton.addActionListener { exportCommands() }
+        favButton.addActionListener { toggleFavoriteCommand() }
+
+        bottomActions.add(favButton)
+        bottomActions.add(importButton)
+        bottomActions.add(exportButton)
+
+        actionPanel.add(topActions)
+        actionPanel.add(bottomActions)
+
+        bottomPanel.add(actionPanel, BorderLayout.NORTH)
+
+        // History section
+        val historyPanel = createHistoryPanel()
+        bottomPanel.add(historyPanel, BorderLayout.CENTER)
+
+        sidebar.add(bottomPanel, BorderLayout.SOUTH)
+
+        return sidebar
+    }
+
+    private fun createHistoryPanel(): JPanel {
+        val panel = JPanel(BorderLayout())
+        panel.border = BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.separatorColor") ?: Color.GRAY),
+            BorderFactory.createEmptyBorder(4, 0, 0, 0)
+        )
+        panel.preferredSize = Dimension(0, 110)
+
+        val headerLabel = JLabel("  Recent Executions")
+        headerLabel.font = headerLabel.font.deriveFont(Font.BOLD, 11f)
+        headerLabel.border = BorderFactory.createEmptyBorder(4, 6, 4, 0)
+        panel.add(headerLabel, BorderLayout.NORTH)
+
+        val historyList = JBList<String>()
+        val historyModel = DefaultListModel<String>()
+        historyList.model = historyModel
+        historyList.fixedCellHeight = 20
+        historyList.font = historyList.font.deriveFont(11f)
+
+        storage.executionHistory.take(5).forEach { entry ->
+            val date = java.text.SimpleDateFormat("HH:mm:ss")
+                .format(java.util.Date(entry.timestamp))
+            historyModel.addElement("  $date - ${entry.commandName}")
+        }
+
+        if (historyModel.isEmpty) {
+            historyModel.addElement("  No recent executions")
+        }
+
+        val scroll = JBScrollPane(historyList)
+        scroll.border = BorderFactory.createEmptyBorder()
+        panel.add(scroll, BorderLayout.CENTER)
 
         return panel
     }
 
-    private fun createCommandEditorPanel(): JPanel {
+    // ==================== RIGHT PANEL ====================
+
+    private fun createRightPanel(): JPanel {
+        val panel = JPanel(BorderLayout(0, 0))
+        panel.border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
+
+        // Editor content with tabs
+        val tabbedPane = JTabbedPane(JTabbedPane.TOP)
+        tabbedPane.border = BorderFactory.createEmptyBorder(4, 4, 0, 4)
+
+        tabbedPane.addTab("Command", createCommandEditorTab())
+        tabbedPane.addTab("Environment", createEnvironmentTab())
+        tabbedPane.addTab("Templates", createTemplatesTab())
+
+        panel.add(tabbedPane, BorderLayout.CENTER)
+
+        // Bottom: Save/Cancel buttons
+        val buttonBar = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 6))
+        buttonBar.border = BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.separatorColor") ?: Color.GRAY)
+
+        cancelEditButton.isVisible = false
+        saveButton.addActionListener { saveCommand() }
+        cancelEditButton.addActionListener { cancelEdit() }
+
+        buttonBar.add(cancelEditButton)
+        buttonBar.add(saveButton)
+
+        panel.add(buttonBar, BorderLayout.SOUTH)
+
+        return panel
+    }
+
+    private fun createCommandEditorTab(): JPanel {
         val panel = JPanel(GridBagLayout())
-        panel.border = BorderFactory.createTitledBorder("📝 Command Editor")
+        panel.border = BorderFactory.createEmptyBorder(12, 16, 12, 16)
 
         val gbc = GridBagConstraints()
-        gbc.fill = GridBagConstraints.HORIZONTAL
-        gbc.weightx = 1.0
-        gbc.insets = java.awt.Insets(3, 5, 3, 5)
-
-        commandArea.lineWrap = true
-        commandArea.wrapStyleWord = true
+        gbc.insets = Insets(4, 4, 4, 4)
+        gbc.anchor = GridBagConstraints.WEST
 
         var row = 0
 
-        // Row 0: Name + Favorite
+        // Name + Favorite
         gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 1; gbc.weightx = 0.0
-        panel.add(JLabel("Name:"), gbc)
-        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.NONE
+        panel.add(createFieldLabel("Name"), gbc)
+        gbc.gridx = 1; gbc.gridwidth = 1; gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.HORIZONTAL
         panel.add(nameField, gbc)
-        gbc.gridx = 3; gbc.gridwidth = 1; gbc.weightx = 0.0
-        favoriteCheckBox.font = favoriteCheckBox.font.deriveFont(16f)
+        gbc.gridx = 2; gbc.gridwidth = 1; gbc.weightx = 0.0
+        gbc.fill = GridBagConstraints.NONE
         panel.add(favoriteCheckBox, gbc)
         row++
 
-        // Row 1: Commands
+        // Commands
         gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 1; gbc.weightx = 0.0
-        gbc.anchor = GridBagConstraints.NORTH
-        panel.add(JLabel("Commands:"), gbc)
-        gbc.gridx = 1; gbc.gridwidth = 3; gbc.weightx = 1.0
-        gbc.fill = GridBagConstraints.BOTH
-        gbc.weighty = 0.3
+        gbc.fill = GridBagConstraints.NONE
+        gbc.anchor = GridBagConstraints.NORTHWEST
+        panel.add(createFieldLabel("Commands"), gbc)
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.BOTH; gbc.weighty = 1.0
+        commandArea.lineWrap = true
+        commandArea.wrapStyleWord = true
+        commandArea.font = Font(Font.MONOSPACED, Font.PLAIN, 13)
         panel.add(JBScrollPane(commandArea), gbc)
         row++
 
-        // Row 2: Help
-        gbc.gridx = 1; gbc.gridy = row; gbc.gridwidth = 3
-        gbc.fill = GridBagConstraints.HORIZONTAL
-        gbc.weighty = 0.0
-        val helpLabel = JLabel("<html><i>💡 One command per line. Variables: {project_name}, {project_path}, {date}, {time}</i></html>")
+        // Help text
+        gbc.gridx = 1; gbc.gridy = row; gbc.gridwidth = 2
+        gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weighty = 0.0
+        gbc.anchor = GridBagConstraints.WEST
+        val helpLabel = JLabel("<html><i>One command per line. Variables: {project_name}, {project_path}, {date}, {time}</i></html>")
+        helpLabel.font = helpLabel.font.deriveFont(11f)
+        helpLabel.foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
         panel.add(helpLabel, gbc)
         row++
 
-        // Row 3: Working Directory
+        // Working Directory
         gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 1; gbc.weightx = 0.0
-        panel.add(JLabel("Working Dir:"), gbc)
-        gbc.gridx = 1; gbc.gridwidth = 3; gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.NONE
+        gbc.anchor = GridBagConstraints.WEST
+        panel.add(createFieldLabel("Working Dir"), gbc)
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.HORIZONTAL
         panel.add(workingDirField, gbc)
         row++
 
-        // Row 4: Icon
+        // Icon + Shortcut on same row
         gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 1; gbc.weightx = 0.0
-        panel.add(JLabel("Icon:"), gbc)
-        gbc.gridx = 1; gbc.gridwidth = 1; gbc.weightx = 0.3
-        panel.add(iconComboBox, gbc)
-
-        // Shortcut
-        gbc.gridx = 2; gbc.gridwidth = 1; gbc.weightx = 0.0
-        panel.add(JLabel("Shortcut:"), gbc)
-        gbc.gridx = 3; gbc.gridwidth = 1; gbc.weightx = 0.7
-        panel.add(shortcutField, gbc)
-        row++
-
-        // Row 5: Environment Variables
-        gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 1; gbc.weightx = 0.0
-        gbc.anchor = GridBagConstraints.NORTH
-        panel.add(JLabel("Env Vars:"), gbc)
-
-        val envPanel = JPanel(BorderLayout())
-        envPanel.add(JBScrollPane(envVarsTable), BorderLayout.CENTER)
-
-        val envButtonPanel = JPanel(FlowLayout(FlowLayout.LEFT))
-        val addEnvButton = JButton("+ Add")
-        val removeEnvButton = JButton("- Remove")
-
-        addEnvButton.addActionListener { addEnvironmentVariable() }
-        removeEnvButton.addActionListener { removeEnvironmentVariable() }
-
-        envButtonPanel.add(addEnvButton)
-        envButtonPanel.add(removeEnvButton)
-        envPanel.add(envButtonPanel, BorderLayout.SOUTH)
-
-        gbc.gridx = 1; gbc.gridwidth = 3; gbc.weightx = 1.0
-        gbc.fill = GridBagConstraints.BOTH
-        gbc.weighty = 0.2
-        panel.add(envPanel, gbc)
-        row++
-
-        // Row 6: Buttons
-        val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT))
-        val saveButton = JButton("💾 Save")
-        val cancelEditButton = JButton("❌ Cancel")
-        val templatesButton = JButton("📋 Templates")
-        cancelEditButton.isVisible = false
-
-        saveButton.addActionListener { saveCommand(saveButton, cancelEditButton) }
-        cancelEditButton.addActionListener { cancelEdit(saveButton, cancelEditButton) }
-        templatesButton.addActionListener { showTemplatesDialog() }
-
-        buttonPanel.add(saveButton)
-        buttonPanel.add(cancelEditButton)
-        buttonPanel.add(templatesButton)
-
-        gbc.gridx = 1; gbc.gridy = row; gbc.gridwidth = 3
         gbc.fill = GridBagConstraints.NONE
-        gbc.weighty = 0.0
-        panel.add(buttonPanel, gbc)
+        panel.add(createFieldLabel("Icon"), gbc)
+
+        val iconShortcutPanel = JPanel(GridBagLayout())
+        val igbc = GridBagConstraints()
+        igbc.insets = Insets(0, 0, 0, 12)
+        igbc.gridx = 0; igbc.weightx = 0.0; igbc.fill = GridBagConstraints.NONE
+        iconComboBox.preferredSize = Dimension(100, iconComboBox.preferredSize.height)
+        iconShortcutPanel.add(iconComboBox, igbc)
+
+        igbc.gridx = 1; igbc.weightx = 0.0; igbc.insets = Insets(0, 0, 0, 6)
+        iconShortcutPanel.add(JLabel("Shortcut:"), igbc)
+
+        igbc.gridx = 2; igbc.weightx = 1.0; igbc.fill = GridBagConstraints.HORIZONTAL; igbc.insets = Insets(0, 0, 0, 0)
+        iconShortcutPanel.add(shortcutField, igbc)
+
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        panel.add(iconShortcutPanel, gbc)
 
         return panel
     }
+
+    private fun createEnvironmentTab(): JPanel {
+        val panel = JPanel(BorderLayout(0, 8))
+        panel.border = BorderFactory.createEmptyBorder(12, 16, 12, 16)
+
+        val headerLabel = JLabel("Environment variables are set before command execution")
+        headerLabel.font = headerLabel.font.deriveFont(11f)
+        headerLabel.foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+        panel.add(headerLabel, BorderLayout.NORTH)
+
+        envVarsTable.preferredScrollableViewportSize = Dimension(400, 200)
+        panel.add(JBScrollPane(envVarsTable), BorderLayout.CENTER)
+
+        val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
+        val addButton = JButton("Add Variable")
+        val removeButton = JButton("Remove")
+
+        addButton.addActionListener { addEnvironmentVariable() }
+        removeButton.addActionListener { removeEnvironmentVariable() }
+
+        buttonPanel.add(addButton)
+        buttonPanel.add(removeButton)
+        panel.add(buttonPanel, BorderLayout.SOUTH)
+
+        return panel
+    }
+
+    private fun createTemplatesTab(): JPanel {
+        val panel = JPanel(BorderLayout(0, 8))
+        panel.border = BorderFactory.createEmptyBorder(12, 16, 12, 16)
+
+        val headerLabel = JLabel("Select a template to populate the editor with pre-configured commands")
+        headerLabel.font = headerLabel.font.deriveFont(11f)
+        headerLabel.foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+        panel.add(headerLabel, BorderLayout.NORTH)
+
+        // Templates list grouped by category
+        val templateListModel = DefaultListModel<String>()
+        val templateList = JBList(templateListModel)
+        templateList.fixedCellHeight = 28
+        templateList.selectionMode = ListSelectionModel.SINGLE_SELECTION
+
+        val templatesByCategory = CommandTemplates.getTemplatesByCategory()
+        val flatTemplates = mutableListOf<CommandTemplates.Template>()
+
+        templatesByCategory.forEach { (category, templates) ->
+            templateListModel.addElement("--- $category ---")
+            flatTemplates.add(CommandTemplates.Template("", "", emptyList())) // placeholder for header
+            templates.forEach { template ->
+                templateListModel.addElement("  ${template.name} - ${template.description}")
+                flatTemplates.add(template)
+            }
+        }
+
+        templateList.cellRenderer = object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
+            ): Component {
+                val comp = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+                val text = value as? String ?: ""
+                if (text.startsWith("---")) {
+                    font = font.deriveFont(Font.BOLD)
+                    if (!isSelected) {
+                        foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+                    }
+                }
+                return comp
+            }
+        }
+
+        val scrollPane = JBScrollPane(templateList)
+        panel.add(scrollPane, BorderLayout.CENTER)
+
+        val applyButton = JButton("Apply Template")
+        applyButton.addActionListener {
+            val idx = templateList.selectedIndex
+            if (idx >= 0 && idx < flatTemplates.size) {
+                val template = flatTemplates[idx]
+                if (template.name.isNotEmpty()) {
+                    nameField.text = template.name
+                    commandArea.text = template.commands.joinToString("\n")
+                    iconComboBox.selectedItem = template.icon
+                    setEnvironmentVariablesInTable(template.envVars)
+                    // Switch back to Command tab
+                    val tabbedPane = SwingUtilities.getAncestorOfClass(JTabbedPane::class.java, panel) as? JTabbedPane
+                    tabbedPane?.selectedIndex = 0
+                }
+            }
+        }
+
+        val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT))
+        buttonPanel.add(applyButton)
+        panel.add(buttonPanel, BorderLayout.SOUTH)
+
+        return panel
+    }
+
+    // ==================== HELPERS ====================
+
+    private fun createFieldLabel(text: String): JLabel {
+        val label = JLabel("$text:")
+        label.font = label.font.deriveFont(Font.PLAIN)
+        label.preferredSize = Dimension(85, label.preferredSize.height)
+        return label
+    }
+
+    // ==================== CELL RENDERER ====================
+
+    private inner class CommandListCellRenderer : ListCellRenderer<SavedCommand> {
+        override fun getListCellRendererComponent(
+            list: JList<out SavedCommand>?,
+            value: SavedCommand?,
+            index: Int,
+            isSelected: Boolean,
+            cellHasFocus: Boolean
+        ): Component {
+            val panel = JPanel(BorderLayout(8, 0))
+            panel.border = BorderFactory.createEmptyBorder(4, 10, 4, 10)
+
+            if (isSelected) {
+                panel.background = list?.selectionBackground ?: UIManager.getColor("List.selectionBackground")
+                panel.foreground = list?.selectionForeground ?: UIManager.getColor("List.selectionForeground")
+            } else {
+                panel.background = list?.background ?: UIManager.getColor("List.background")
+                panel.foreground = list?.foreground ?: UIManager.getColor("List.foreground")
+            }
+            panel.isOpaque = true
+
+            if (value == null) return panel
+
+            // Left: icon
+            val iconLabel = JLabel(getIconForColor(value.icon))
+            iconLabel.preferredSize = Dimension(20, 20)
+            panel.add(iconLabel, BorderLayout.WEST)
+
+            // Center: name + command preview
+            val centerPanel = JPanel(BorderLayout(0, 1))
+            centerPanel.isOpaque = false
+
+            val nameLabel = JLabel(value.name)
+            nameLabel.font = nameLabel.font.deriveFont(Font.BOLD, 12f)
+            nameLabel.foreground = if (isSelected) panel.foreground else list?.foreground
+            centerPanel.add(nameLabel, BorderLayout.NORTH)
+
+            val cmdPreview = value.getCommandsAsString()
+            val previewLabel = JLabel(if (cmdPreview.length > 40) cmdPreview.substring(0, 40) + "..." else cmdPreview)
+            previewLabel.font = previewLabel.font.deriveFont(Font.PLAIN, 10f)
+            previewLabel.foreground = if (isSelected) panel.foreground else (UIManager.getColor("Label.disabledForeground") ?: Color.GRAY)
+            centerPanel.add(previewLabel, BorderLayout.SOUTH)
+
+            panel.add(centerPanel, BorderLayout.CENTER)
+
+            // Right: favorite star
+            if (value.isFavorite) {
+                val favLabel = JLabel("*")
+                favLabel.font = favLabel.font.deriveFont(Font.BOLD, 14f)
+                favLabel.foreground = Color(255, 193, 7)
+                panel.add(favLabel, BorderLayout.EAST)
+            }
+
+            return panel
+        }
+    }
+
+    // ==================== ACTIONS ====================
 
     private fun addEnvironmentVariable() {
         val varName = JOptionPane.showInputDialog(this.rootPane, "Variable Name:", "Add Environment Variable", JOptionPane.PLAIN_MESSAGE)
@@ -236,138 +540,18 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         }
     }
 
-    private fun showTemplatesDialog() {
-        val templates = CommandTemplates.templates
-        val templateNames = templates.map { "${it.name} - ${it.description}" }.toTypedArray()
-
-        val selected = JOptionPane.showInputDialog(
-            this.rootPane,
-            "Select a template:",
-            "Command Templates",
-            JOptionPane.PLAIN_MESSAGE,
-            null,
-            templateNames,
-            templateNames[0]
-        ) as? String
-
-        if (selected != null) {
-            val index = templateNames.indexOf(selected)
-            if (index >= 0) {
-                val template = templates[index]
-                nameField.text = template.name
-                commandArea.text = template.commands.joinToString("\n")
-                iconComboBox.selectedItem = template.icon
-                setEnvironmentVariablesInTable(template.envVars)
-            }
-        }
-    }
-
-    private fun createCommandListPanel(): JPanel {
-        val panel = JPanel(BorderLayout(5, 5))
-        panel.border = BorderFactory.createTitledBorder("📚 Saved Commands")
-
-        // Search bar + Favorites filter
-        val searchPanel = JPanel(BorderLayout(5, 5))
-        val searchSubPanel = JPanel(BorderLayout())
-        searchSubPanel.add(JLabel("🔍 Search: "), BorderLayout.WEST)
-        searchSubPanel.add(searchField, BorderLayout.CENTER)
-        searchPanel.add(searchSubPanel, BorderLayout.CENTER)
-
-        showFavoritesOnly.addActionListener { filterCommands() }
-        searchPanel.add(showFavoritesOnly, BorderLayout.EAST)
-
-        searchField.document.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent?) = filterCommands()
-            override fun removeUpdate(e: DocumentEvent?) = filterCommands()
-            override fun changedUpdate(e: DocumentEvent?) = filterCommands()
-        })
-
-        panel.add(searchPanel, BorderLayout.NORTH)
-
-        // Commands list
-        commandList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        commandList.cellRenderer = object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                list: JList<*>?,
-                value: Any?,
-                index: Int,
-                isSelected: Boolean,
-                cellHasFocus: Boolean
-            ): java.awt.Component {
-                val component = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-                if (value is SavedCommand) {
-                    val icon = getIconForColor(value.icon)
-                    val favorite = if (value.isFavorite) "⭐ " else ""
-                    val envInfo = if (value.environmentVariables.isNotEmpty()) " [${value.environmentVariables.size} env vars]" else ""
-                    text = "$favorite$icon ${value.name}: ${value.getCommandsAsString()}$envInfo"
-                }
-                return component
-            }
-        }
-
-        val scrollPane = JBScrollPane(commandList)
-        panel.add(scrollPane, BorderLayout.CENTER)
-
-        // Action buttons
-        val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT))
-        val runButton = JButton("▶ Run")
-        val editButton = JButton("✏ Edit")
-        val favoriteButton = JButton("⭐ Toggle Favorite")
-        val deleteButton = JButton("🗑 Delete")
-        val importButton = JButton("📥 Import")
-        val exportButton = JButton("📤 Export")
-
-        runButton.addActionListener { runSelectedCommand() }
-        editButton.addActionListener { editSelectedCommand() }
-        favoriteButton.addActionListener { toggleFavoriteCommand() }
-        deleteButton.addActionListener { deleteSelectedCommand() }
-        importButton.addActionListener { importCommands() }
-        exportButton.addActionListener { exportCommands() }
-
-        buttonPanel.add(runButton)
-        buttonPanel.add(editButton)
-        buttonPanel.add(favoriteButton)
-        buttonPanel.add(deleteButton)
-        buttonPanel.add(JSeparator(SwingConstants.VERTICAL))
-        buttonPanel.add(importButton)
-        buttonPanel.add(exportButton)
-
-        panel.add(buttonPanel, BorderLayout.SOUTH)
-
-        return panel
-    }
-
-    private fun createHistoryPanel(): JPanel {
-        val panel = JPanel(BorderLayout())
-        panel.border = BorderFactory.createTitledBorder("📊 Recent Executions")
-        panel.preferredSize = Dimension(900, 100)
-
-        val historyList = JBList<String>()
-        val historyModel = DefaultListModel<String>()
-        historyList.model = historyModel
-
-        storage.executionHistory.take(10).forEach { entry ->
-            val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-                .format(java.util.Date(entry.timestamp))
-            historyModel.addElement("🕒 ${entry.commandName} - $date")
-        }
-
-        panel.add(JBScrollPane(historyList), BorderLayout.CENTER)
-        return panel
-    }
-
     private fun getIconForColor(color: String): String {
         return when (color) {
-            "green" -> "🟢"
-            "blue" -> "🔵"
-            "red" -> "🔴"
-            "yellow" -> "🟡"
-            "purple" -> "🟣"
-            else -> "🎯"
+            "green" -> "G"
+            "blue" -> "B"
+            "red" -> "R"
+            "yellow" -> "Y"
+            "purple" -> "P"
+            else -> ">"
         }
     }
 
-    private fun saveCommand(saveButton: JButton, cancelEditButton: JButton) {
+    private fun saveCommand() {
         val name = nameField.text.trim()
         val commandsText = commandArea.text.trim()
         val workingDir = workingDirField.text.trim()
@@ -393,7 +577,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         if (editingCommand != null) {
             storage.updateCommand(editingCommand!!, name, commands, workingDir, icon, shortcut, isFavorite, envVars)
             editingCommand = null
-            saveButton.text = "💾 Save"
+            saveButton.text = "Save"
             cancelEditButton.isVisible = false
         } else {
             storage.addCommand(name, commands, workingDir, icon, shortcut, isFavorite, envVars)
@@ -403,9 +587,9 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         clearFields()
     }
 
-    private fun cancelEdit(saveButton: JButton, cancelEditButton: JButton) {
+    private fun cancelEdit() {
         editingCommand = null
-        saveButton.text = "💾 Save"
+        saveButton.text = "Save"
         cancelEditButton.isVisible = false
         clearFields()
     }
@@ -418,6 +602,8 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         shortcutField.text = ""
         favoriteCheckBox.isSelected = false
         envVarsTableModel.rowCount = 0
+        editingCommand = null
+        commandList.clearSelection()
     }
 
     private fun editSelectedCommand() {
@@ -427,19 +613,9 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         }
 
         editingCommand = selected
-        nameField.text = selected.name
-        commandArea.text = selected.commands.joinToString("\n")
-        workingDirField.text = selected.workingDirectory
-        iconComboBox.selectedItem = selected.icon
-        shortcutField.text = selected.keyboardShortcut
-        favoriteCheckBox.isSelected = selected.isFavorite
-        setEnvironmentVariablesInTable(selected.environmentVariables)
-
-        val saveButton = findComponentByText("💾 Save") as? JButton
-        saveButton?.text = "💾 Update"
-
-        val cancelEditButton = findComponentByText("❌ Cancel") as? JButton
-        cancelEditButton?.isVisible = true
+        populateEditorFromCommand(selected)
+        saveButton.text = "Update"
+        cancelEditButton.isVisible = true
     }
 
     private fun toggleFavoriteCommand() {
@@ -450,23 +626,6 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
 
         storage.toggleFavorite(selected)
         loadCommands()
-    }
-
-    private fun findComponentByText(text: String): java.awt.Component? {
-        return findComponentRecursive(rootPane, text)
-    }
-
-    private fun findComponentRecursive(parent: java.awt.Container, text: String): java.awt.Component? {
-        for (component in parent.components) {
-            if (component is JButton && component.text == text) {
-                return component
-            }
-            if (component is java.awt.Container) {
-                val found = findComponentRecursive(component, text)
-                if (found != null) return found
-            }
-        }
-        return null
     }
 
     private fun runSelectedCommand() {
@@ -495,6 +654,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         if (confirm == Messages.YES) {
             storage.removeCommand(selected)
             loadCommands()
+            clearFields()
         }
     }
 

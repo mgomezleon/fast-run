@@ -2,7 +2,7 @@
 <idea-plugin>
     <id>com.ofirs.fastrun</id>
     <name>Fast Run - Terminal Command Manager</name>
-    <vendor email="ofirs1988cs@gmail.com" url="https://github.com/ofirs1988/fast-run">Ofir S</vendor>
+    <vendor email="ofirs1988cs@gmail.com" url="https://genwave.ai/">GenWave</vendor>
 
     <description><![CDATA[
     <h2>Fast Run - Quick Terminal Command Manager</h2>
