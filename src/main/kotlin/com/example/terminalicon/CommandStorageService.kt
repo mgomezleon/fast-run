@@ -10,14 +10,14 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 interface CommandStore {
     var savedCommands: MutableList<SavedCommand>
 
-    fun addCommand(name: String, commands: List<String>, workingDir: String = "", icon: String = "default", shortcut: String = "", isFavorite: Boolean = false, envVars: Map<String, String> = emptyMap()) {
-        savedCommands.add(SavedCommand(name, commands.toMutableList(), workingDir, icon, shortcut, isFavorite, envVars.toMutableMap()))
+    fun addCommand(name: String, commands: List<String>, workingDir: String = "", icon: String = "default", shortcut: String = "", isFavorite: Boolean = false, envVars: Map<String, String> = emptyMap(), customIconPath: String = "") {
+        savedCommands.add(SavedCommand(name, commands.toMutableList(), workingDir, icon, shortcut, isFavorite, envVars.toMutableMap(), customIconPath))
     }
 
-    fun updateCommand(oldCommand: SavedCommand, name: String, commands: List<String>, workingDir: String = "", icon: String = "default", shortcut: String = "", isFavorite: Boolean = false, envVars: Map<String, String> = emptyMap()) {
+    fun updateCommand(oldCommand: SavedCommand, name: String, commands: List<String>, workingDir: String = "", icon: String = "default", shortcut: String = "", isFavorite: Boolean = false, envVars: Map<String, String> = emptyMap(), customIconPath: String = "") {
         val index = savedCommands.indexOf(oldCommand)
         if (index != -1) {
-            savedCommands[index] = SavedCommand(name, commands.toMutableList(), workingDir, icon, shortcut, isFavorite, envVars.toMutableMap())
+            savedCommands[index] = SavedCommand(name, commands.toMutableList(), workingDir, icon, shortcut, isFavorite, envVars.toMutableMap(), customIconPath)
         }
     }
 
@@ -80,7 +80,10 @@ data class SavedCommand(
     var icon: String = "default",
     var keyboardShortcut: String = "",
     var isFavorite: Boolean = false,
-    var environmentVariables: MutableMap<String, String> = mutableMapOf()
+    var environmentVariables: MutableMap<String, String> = mutableMapOf(),
+    // Absolute path to a custom image file. When set, it is used as-is as the command icon
+    // (no color tint, terminal.svg is ignored); when empty, the `icon` color is used instead.
+    var customIconPath: String = ""
 ) {
     // For display purposes - show all commands separated by " && "
     fun getCommandsAsString(): String {

@@ -53,6 +53,7 @@ jetbrains_extention/
 - **📂 Global or Project-Scoped:** Choose whether a command is available in every project or only in the current one
 - **📋 Fast Run Menu:** New dedicated menu in the main menu bar for quick access
 - **🎨 Color Icons:** Assign a color to each command; it shows up in the menu and command list
+- **🖼️ Custom Icons:** Or pick your own image file (SVG, PNG, GIF, JPG) to use directly as a command's icon
 - **🎨 Toolbar Icon:** Beautiful green icon for instant access to command manager
 - **💪 Persistent Storage:** Your commands are saved automatically and persist across IDE restarts
 - **📝 Easy Management:** Simple dialog to add, edit, and delete saved commands
@@ -114,7 +115,10 @@ By default, saved commands are **global** and appear in every project. To keep a
 Project-scoped commands are marked with a **PROJ** badge in the list. Since they live under `.idea/`, they can be committed and shared with your team (add the file to `.gitignore` if you'd rather keep them private). Editing a command and toggling the checkbox moves it between global and project storage.
 
 ### Color Icons
-Pick a color in the **Icon** field of the editor (default, green, blue, red, yellow, purple). The matching colored dot is shown next to the command in the Fast Run menu, the terminal context menu, and the command list.
+Pick a color in the **Icon** field of the editor (default, green, blue, red, yellow, purple). The base terminal glyph is tinted with that color and shown next to the command in the Fast Run menu, the terminal context menu, and the command list.
+
+### Custom Icons
+Prefer your own icon? Use the **Custom Icon** field to select an image file (SVG, PNG, GIF, JPG). When set, it is used **as-is** — no color tint, and the base terminal glyph is ignored (the color selector is disabled). Leave it empty to fall back to the color icon. If the file is later moved or deleted, the command automatically falls back to its color icon.
 
 ## 🛠️ Development
 

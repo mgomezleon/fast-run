@@ -43,7 +43,7 @@ class SavedCommandsActionGroup : ActionGroup(), DumbAware {
     }
 }
 
-class RunSavedCommandAction(private val savedCommand: SavedCommand) : AnAction(savedCommand.name, savedCommand.getCommandsAsString(), CommandIcons.forColor(savedCommand.icon)), DumbAware {
+class RunSavedCommandAction(private val savedCommand: SavedCommand) : AnAction(savedCommand.name, savedCommand.getCommandsAsString(), CommandIcons.forCommand(savedCommand)), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun actionPerformed(e: AnActionEvent) {

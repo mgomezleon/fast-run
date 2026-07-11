@@ -2,6 +2,20 @@
 
 All notable changes to the "Fast Run - Terminal Command Manager" plugin will be documented in this file.
 
+## [1.2.1] - 2026-07-11
+
+### Added
+- 🖼️ **Custom command icon**: new "Custom Icon" field in the command editor
+  - Pick an image file (SVG, PNG, GIF, JPG) to use directly as the command's icon
+  - When a custom icon is set, it is used as-is: no color tint and the base `terminal.svg` is ignored
+  - Leaving it empty keeps the previous behavior (the color-tinted `terminal.svg` glyph)
+  - The color selector is disabled while a custom icon is selected
+  - If the file is missing or unreadable at runtime, the icon gracefully falls back to the color
+
+### Technical
+- Added `customIconPath` field to `SavedCommand` (threaded through `CommandStore.addCommand`/`updateCommand`)
+- `CommandIcons.forCommand()` resolves per-command icons: custom image (SVG via `IconLoader`, raster via `ImageIO`, scaled to 16×16) or the color-tinted glyph; menu actions and the dialog list now use it
+
 ## [1.2.0] - 2026-07-10
 
 ### Added

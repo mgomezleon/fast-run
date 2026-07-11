@@ -26,6 +26,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
     private val commandArea = JTextArea(8, 30)
     private val workingDirField = TextFieldWithBrowseButton()
     private val iconComboBox = JComboBox(arrayOf("default", "green", "blue", "red", "yellow", "purple"))
+    private val customIconField = TextFieldWithBrowseButton()
     private val shortcutField = JTextField()
     private val favoriteCheckBox = JCheckBox("Favorite")
     private val projectOnlyCheckBox = JCheckBox("This project only")
@@ -52,6 +53,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         init()
         loadCommands()
         setupWorkingDirField()
+        setupCustomIconField()
         setupEnvVarsTable()
         setupListSelectionListener()
     }
@@ -64,6 +66,27 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
             project,
             descriptor
         )
+    }
+
+    private fun setupCustomIconField() {
+        val descriptor = FileChooserDescriptorFactory.createSingleFileDescriptor()
+        customIconField.addBrowseFolderListener(
+            "Select Custom Icon",
+            "Choose an image (SVG, PNG, GIF, JPG) to use as the command icon",
+            project,
+            descriptor
+        )
+        // When a custom icon is set, the color selector is ignored, so disable it for clarity.
+        customIconField.textField.document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent?) = syncIconControls()
+            override fun removeUpdate(e: DocumentEvent?) = syncIconControls()
+            override fun changedUpdate(e: DocumentEvent?) = syncIconControls()
+        })
+    }
+
+    /** The color selector only applies when no custom icon is chosen. */
+    private fun syncIconControls() {
+        iconComboBox.isEnabled = customIconField.text.isBlank()
     }
 
     private fun setupEnvVarsTable() {
@@ -87,10 +110,12 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         commandArea.text = command.commands.joinToString("\n")
         workingDirField.text = command.workingDirectory
         iconComboBox.selectedItem = command.icon
+        customIconField.text = command.customIconPath
         shortcutField.text = command.keyboardShortcut
         favoriteCheckBox.isSelected = command.isFavorite
         projectOnlyCheckBox.isSelected = isProjectCommand(command)
         setEnvironmentVariablesInTable(command.environmentVariables)
+        syncIconControls()
     }
 
     /** Whether [command] currently lives in the project-scoped storage (by identity). */
@@ -347,6 +372,25 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0
         gbc.fill = GridBagConstraints.HORIZONTAL
         panel.add(iconShortcutPanel, gbc)
+        row++
+
+        // Custom Icon (overrides the color icon when set)
+        gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 1; gbc.weightx = 0.0
+        gbc.fill = GridBagConstraints.NONE
+        gbc.anchor = GridBagConstraints.WEST
+        panel.add(createFieldLabel("Custom Icon"), gbc)
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        customIconField.textField.toolTipText = "Optional image file used as-is as the icon; when set, the color above is ignored"
+        panel.add(customIconField, gbc)
+        row++
+
+        gbc.gridx = 1; gbc.gridy = row; gbc.gridwidth = 2
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        val customIconHelp = JLabel("<html><i>Optional. Pick an image (SVG, PNG, GIF, JPG) to use directly as the icon. Leave empty to use the color above.</i></html>")
+        customIconHelp.font = customIconHelp.font.deriveFont(11f)
+        customIconHelp.foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+        panel.add(customIconHelp, gbc)
 
         return panel
     }
@@ -432,6 +476,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
                     nameField.text = template.name
                     commandArea.text = template.commands.joinToString("\n")
                     iconComboBox.selectedItem = template.icon
+                    customIconField.text = ""
                     setEnvironmentVariablesInTable(template.envVars)
                     // Switch back to Command tab
                     val tabbedPane = SwingUtilities.getAncestorOfClass(JTabbedPane::class.java, panel) as? JTabbedPane
@@ -481,7 +526,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
             if (value == null) return panel
 
             // Left: icon
-            val iconLabel = JLabel(CommandIcons.forColor(value.icon))
+            val iconLabel = JLabel(CommandIcons.forCommand(value))
             iconLabel.preferredSize = Dimension(20, 20)
             panel.add(iconLabel, BorderLayout.WEST)
 
@@ -572,6 +617,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         val commandsText = commandArea.text.trim()
         val workingDir = workingDirField.text.trim()
         val icon = iconComboBox.selectedItem as String
+        val customIconPath = customIconField.text.trim()
         val shortcut = shortcutField.text.trim()
         val isFavorite = favoriteCheckBox.isSelected
         val envVars = getEnvironmentVariablesFromTable()
@@ -596,18 +642,18 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         if (editingCommand != null) {
             val wasProject = isProjectCommand(editingCommand!!)
             if (wasProject == projectOnly) {
-                targetStore.updateCommand(editingCommand!!, name, commands, workingDir, icon, shortcut, isFavorite, envVars)
+                targetStore.updateCommand(editingCommand!!, name, commands, workingDir, icon, shortcut, isFavorite, envVars, customIconPath)
             } else {
                 // Scope changed: move the command to the other storage
                 val oldStore: CommandStore = if (wasProject) projectStorage else storage
                 oldStore.removeCommand(editingCommand!!)
-                targetStore.addCommand(name, commands, workingDir, icon, shortcut, isFavorite, envVars)
+                targetStore.addCommand(name, commands, workingDir, icon, shortcut, isFavorite, envVars, customIconPath)
             }
             editingCommand = null
             saveButton.text = "Save"
             cancelEditButton.isVisible = false
         } else {
-            targetStore.addCommand(name, commands, workingDir, icon, shortcut, isFavorite, envVars)
+            targetStore.addCommand(name, commands, workingDir, icon, shortcut, isFavorite, envVars, customIconPath)
         }
 
         loadCommands()
@@ -626,12 +672,14 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         commandArea.text = ""
         workingDirField.text = ""
         iconComboBox.selectedIndex = 0
+        customIconField.text = ""
         shortcutField.text = ""
         favoriteCheckBox.isSelected = false
         projectOnlyCheckBox.isSelected = false
         envVarsTableModel.rowCount = 0
         editingCommand = null
         commandList.clearSelection()
+        syncIconControls()
     }
 
     private fun editSelectedCommand() {
