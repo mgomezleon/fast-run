@@ -10,12 +10,18 @@ class SavedCommandsActionGroup : ActionGroup(), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
-        val storage = CommandStorageService.getInstance()
         val actions = mutableListOf<AnAction>()
 
-        // Add all saved commands as actions
-        storage.savedCommands.forEach { command ->
+        // Global commands (available in every project)
+        CommandStorageService.getInstance().savedCommands.forEach { command ->
             actions.add(RunSavedCommandAction(command))
+        }
+
+        // Project-scoped commands (only for the current project)
+        e?.project?.let { project ->
+            ProjectCommandStorageService.getInstance(project).savedCommands.forEach { command ->
+                actions.add(RunSavedCommandAction(command))
+            }
         }
 
         // If no commands, show a message action
@@ -37,7 +43,7 @@ class SavedCommandsActionGroup : ActionGroup(), DumbAware {
     }
 }
 
-class RunSavedCommandAction(private val savedCommand: SavedCommand) : AnAction(savedCommand.name, savedCommand.getCommandsAsString(), null), DumbAware {
+class RunSavedCommandAction(private val savedCommand: SavedCommand) : AnAction(savedCommand.name, savedCommand.getCommandsAsString(), CommandIcons.forColor(savedCommand.icon)), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun actionPerformed(e: AnActionEvent) {

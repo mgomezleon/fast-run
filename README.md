@@ -50,7 +50,9 @@ jetbrains_extention/
 
 - **💾 Save Multiple Commands:** Store unlimited terminal commands with custom names
 - **🚀 Run Command Sequences:** Execute multiple commands in sequence with one click
+- **📂 Global or Project-Scoped:** Choose whether a command is available in every project or only in the current one
 - **📋 Fast Run Menu:** New dedicated menu in the main menu bar for quick access
+- **🎨 Color Icons:** Assign a color to each command; it shows up in the menu and command list
 - **🎨 Toolbar Icon:** Beautiful green icon for instant access to command manager
 - **💪 Persistent Storage:** Your commands are saved automatically and persist across IDE restarts
 - **📝 Easy Management:** Simple dialog to add, edit, and delete saved commands
@@ -103,4 +105,22 @@ npm install
 npm run build
 ```
 
+### Global vs. Project-Scoped Commands
+By default, saved commands are **global** and appear in every project. To keep a command tied to a single project:
+
+1. Open the command editor and tick **This project only**.
+2. Save — the command is now stored in `<project>/.idea/fastRunCommands.xml` and only shows up in that project.
+
+Project-scoped commands are marked with a **PROJ** badge in the list. Since they live under `.idea/`, they can be committed and shared with your team (add the file to `.gitignore` if you'd rather keep them private). Editing a command and toggling the checkbox moves it between global and project storage.
+
+### Color Icons
+Pick a color in the **Icon** field of the editor (default, green, blue, red, yellow, purple). The matching colored dot is shown next to the command in the Fast Run menu, the terminal context menu, and the command list.
+
 ## 🛠️ Development
+
+Built with Kotlin on the IntelliJ Platform SDK. See [CLAUDE.md](CLAUDE.md) for build commands and architecture notes.
+
+```bash
+./gradlew buildPlugin   # build the installable .zip in build/distributions/
+./gradlew runIde        # launch a sandbox IDE with the plugin installed
+```

@@ -3,20 +3,12 @@ package com.example.terminalicon
 import com.intellij.openapi.components.*
 import com.intellij.util.xmlb.XmlSerializerUtil
 
-@Service
-@State(
-    name = "TerminalCommandStorage",
-    storages = [Storage("terminalCommands.xml")]
-)
-class CommandStorageService : PersistentStateComponent<CommandStorageService> {
-    var savedCommands: MutableList<SavedCommand> = mutableListOf()
-    var executionHistory: MutableList<ExecutionHistoryEntry> = mutableListOf()
-
-    override fun getState(): CommandStorageService = this
-
-    override fun loadState(state: CommandStorageService) {
-        XmlSerializerUtil.copyBean(state, this)
-    }
+/**
+ * Shared command CRUD, implemented by both the application-level (global) and
+ * project-level storages so callers can operate on either through one API.
+ */
+interface CommandStore {
+    var savedCommands: MutableList<SavedCommand>
 
     fun addCommand(name: String, commands: List<String>, workingDir: String = "", icon: String = "default", shortcut: String = "", isFavorite: Boolean = false, envVars: Map<String, String> = emptyMap()) {
         savedCommands.add(SavedCommand(name, commands.toMutableList(), workingDir, icon, shortcut, isFavorite, envVars.toMutableMap()))
@@ -33,12 +25,32 @@ class CommandStorageService : PersistentStateComponent<CommandStorageService> {
         command.isFavorite = !command.isFavorite
     }
 
-    fun getFavoriteCommands(): List<SavedCommand> {
-        return savedCommands.filter { it.isFavorite }
-    }
+    fun getFavoriteCommands(): List<SavedCommand> = savedCommands.filter { it.isFavorite }
 
     fun removeCommand(command: SavedCommand) {
         savedCommands.remove(command)
+    }
+
+    fun importCommands(commands: List<SavedCommand>) {
+        savedCommands.addAll(commands)
+    }
+
+    fun exportCommands(): List<SavedCommand> = savedCommands.toList()
+}
+
+@Service
+@State(
+    name = "TerminalCommandStorage",
+    storages = [Storage("terminalCommands.xml")]
+)
+class CommandStorageService : PersistentStateComponent<CommandStorageService>, CommandStore {
+    override var savedCommands: MutableList<SavedCommand> = mutableListOf()
+    var executionHistory: MutableList<ExecutionHistoryEntry> = mutableListOf()
+
+    override fun getState(): CommandStorageService = this
+
+    override fun loadState(state: CommandStorageService) {
+        XmlSerializerUtil.copyBean(state, this)
     }
 
     fun addToHistory(commandName: String, timestamp: Long = System.currentTimeMillis()) {
@@ -47,14 +59,6 @@ class CommandStorageService : PersistentStateComponent<CommandStorageService> {
         if (executionHistory.size > 100) {
             executionHistory.removeAt(executionHistory.size - 1)
         }
-    }
-
-    fun importCommands(commands: List<SavedCommand>) {
-        savedCommands.addAll(commands)
-    }
-
-    fun exportCommands(): List<SavedCommand> {
-        return savedCommands.toList()
     }
 
     companion object {

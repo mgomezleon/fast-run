@@ -5,6 +5,9 @@ build/
 gradle-8.4/
 gradle-8.4-bin.zip
 
+# IntelliJ Platform Gradle Plugin (generated)
+.intellijPlatform/
+
 # IntelliJ IDEA
 .idea/
 *.iml

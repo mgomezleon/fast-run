@@ -36,6 +36,8 @@
     <extensions defaultExtensionNs="com.intellij">
         <!-- Command Storage Service -->
         <applicationService serviceImplementation="com.example.terminalicon.CommandStorageService"/>
+        <!-- Project-scoped Command Storage Service -->
+        <projectService serviceImplementation="com.example.terminalicon.ProjectCommandStorageService"/>
     </extensions>
 
     <actions>

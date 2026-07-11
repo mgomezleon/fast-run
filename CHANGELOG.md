@@ -2,6 +2,25 @@
 
 All notable changes to the "Fast Run - Terminal Command Manager" plugin will be documented in this file.
 
+## [1.2.0] - 2026-07-10
+
+### Added
+- 📂 **Project-scoped commands**: New "This project only" checkbox in the command editor
+  - Commands can now be saved either globally (all projects) or scoped to the current project
+  - Project commands are persisted in `<project>/.idea/fastRunCommands.xml` and can be shared via VCS
+  - Editing a command and toggling the checkbox moves it between global and project storage
+  - A `PROJ` badge in the command list distinguishes project-scoped commands
+  - The Fast Run menu and terminal context menu list both global and current-project commands
+
+### Fixed
+- 🎨 **Command color icons in menus**: the selected color icon is now shown next to each command in the Fast Run menu and terminal context menu (previously no icon was displayed). The icon is the `terminal.svg` glyph tinted with the command's color, and the same icon is used in the dialog command list for consistency.
+
+### Technical
+- Introduced `CommandStore` interface with the shared command CRUD, implemented by both storages
+- Added project-level `ProjectCommandStorageService` (`@Service(Service.Level.PROJECT)`) alongside the application-level `CommandStorageService`
+- Registered the new project service via `<projectService>` in `plugin.xml`
+- Added `CommandIcons.forColor()` helper that tints the base `/icons/terminal.svg` icon with each command's color (replacing RGB while preserving alpha so antialiased edges are kept), with per-color caching; reused by menu actions and the dialog list
+
 ## [1.1.0] - 2026-03-20
 
 ### Added

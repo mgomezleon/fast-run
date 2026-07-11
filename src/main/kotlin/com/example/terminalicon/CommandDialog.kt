@@ -19,6 +19,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
     private val commandListModel = DefaultListModel<SavedCommand>()
     private val commandList = JBList(commandListModel)
     private val storage = CommandStorageService.getInstance()
+    private val projectStorage = ProjectCommandStorageService.getInstance(project)
 
     // Editor Fields
     private val nameField = JTextField()
@@ -27,6 +28,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
     private val iconComboBox = JComboBox(arrayOf("default", "green", "blue", "red", "yellow", "purple"))
     private val shortcutField = JTextField()
     private val favoriteCheckBox = JCheckBox("Favorite")
+    private val projectOnlyCheckBox = JCheckBox("This project only")
 
     // Environment Variables Table
     private val envVarsTableModel = DefaultTableModel(arrayOf("Variable", "Value"), 0)
@@ -87,8 +89,12 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         iconComboBox.selectedItem = command.icon
         shortcutField.text = command.keyboardShortcut
         favoriteCheckBox.isSelected = command.isFavorite
+        projectOnlyCheckBox.isSelected = isProjectCommand(command)
         setEnvironmentVariablesInTable(command.environmentVariables)
     }
+
+    /** Whether [command] currently lives in the project-scoped storage (by identity). */
+    private fun isProjectCommand(command: SavedCommand): Boolean = projectStorage.savedCommands.any { it === command }
 
     override fun createCenterPanel(): JComponent {
         val mainPanel = JPanel(BorderLayout())
@@ -279,6 +285,14 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         panel.add(favoriteCheckBox, gbc)
         row++
 
+        // Project-only scope
+        gbc.gridx = 1; gbc.gridy = row; gbc.gridwidth = 2; gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        gbc.anchor = GridBagConstraints.WEST
+        projectOnlyCheckBox.toolTipText = "Save this command only for the current project (stored in .idea/fastRunCommands.xml)"
+        panel.add(projectOnlyCheckBox, gbc)
+        row++
+
         // Commands
         gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 1; gbc.weightx = 0.0
         gbc.fill = GridBagConstraints.NONE
@@ -467,7 +481,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
             if (value == null) return panel
 
             // Left: icon
-            val iconLabel = JLabel(getIconForColor(value.icon))
+            val iconLabel = JLabel(CommandIcons.forColor(value.icon))
             iconLabel.preferredSize = Dimension(20, 20)
             panel.add(iconLabel, BorderLayout.WEST)
 
@@ -488,13 +502,26 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
 
             panel.add(centerPanel, BorderLayout.CENTER)
 
-            // Right: favorite star
+            // Right: project badge + favorite star
+            val eastPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
+            eastPanel.isOpaque = false
+
+            if (isProjectCommand(value)) {
+                val projLabel = JLabel("PROJ")
+                projLabel.font = projLabel.font.deriveFont(Font.BOLD, 9f)
+                projLabel.foreground = if (isSelected) panel.foreground else Color(100, 149, 237)
+                projLabel.toolTipText = "Only available in this project"
+                eastPanel.add(projLabel)
+            }
+
             if (value.isFavorite) {
                 val favLabel = JLabel("*")
                 favLabel.font = favLabel.font.deriveFont(Font.BOLD, 14f)
                 favLabel.foreground = Color(255, 193, 7)
-                panel.add(favLabel, BorderLayout.EAST)
+                eastPanel.add(favLabel)
             }
+
+            panel.add(eastPanel, BorderLayout.EAST)
 
             return panel
         }
@@ -540,17 +567,6 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         }
     }
 
-    private fun getIconForColor(color: String): String {
-        return when (color) {
-            "green" -> "G"
-            "blue" -> "B"
-            "red" -> "R"
-            "yellow" -> "Y"
-            "purple" -> "P"
-            else -> ">"
-        }
-    }
-
     private fun saveCommand() {
         val name = nameField.text.trim()
         val commandsText = commandArea.text.trim()
@@ -574,13 +590,24 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
             return
         }
 
+        val projectOnly = projectOnlyCheckBox.isSelected
+        val targetStore: CommandStore = if (projectOnly) projectStorage else storage
+
         if (editingCommand != null) {
-            storage.updateCommand(editingCommand!!, name, commands, workingDir, icon, shortcut, isFavorite, envVars)
+            val wasProject = isProjectCommand(editingCommand!!)
+            if (wasProject == projectOnly) {
+                targetStore.updateCommand(editingCommand!!, name, commands, workingDir, icon, shortcut, isFavorite, envVars)
+            } else {
+                // Scope changed: move the command to the other storage
+                val oldStore: CommandStore = if (wasProject) projectStorage else storage
+                oldStore.removeCommand(editingCommand!!)
+                targetStore.addCommand(name, commands, workingDir, icon, shortcut, isFavorite, envVars)
+            }
             editingCommand = null
             saveButton.text = "Save"
             cancelEditButton.isVisible = false
         } else {
-            storage.addCommand(name, commands, workingDir, icon, shortcut, isFavorite, envVars)
+            targetStore.addCommand(name, commands, workingDir, icon, shortcut, isFavorite, envVars)
         }
 
         loadCommands()
@@ -601,6 +628,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         iconComboBox.selectedIndex = 0
         shortcutField.text = ""
         favoriteCheckBox.isSelected = false
+        projectOnlyCheckBox.isSelected = false
         envVarsTableModel.rowCount = 0
         editingCommand = null
         commandList.clearSelection()
@@ -624,9 +652,12 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
             return
         }
 
-        storage.toggleFavorite(selected)
+        storageFor(selected).toggleFavorite(selected)
         loadCommands()
     }
+
+    /** The storage that currently owns [command]. */
+    private fun storageFor(command: SavedCommand): CommandStore = if (isProjectCommand(command)) projectStorage else storage
 
     private fun runSelectedCommand() {
         val selected = commandList.selectedValue ?: run {
@@ -652,7 +683,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
         )
 
         if (confirm == Messages.YES) {
-            storage.removeCommand(selected)
+            storageFor(selected).removeCommand(selected)
             loadCommands()
             clearFields()
         }
@@ -684,6 +715,7 @@ class CommandDialog(private val project: Project) : DialogWrapper(project) {
     private fun loadCommands() {
         allCommands.clear()
         allCommands.addAll(storage.savedCommands)
+        allCommands.addAll(projectStorage.savedCommands)
         filterCommands()
     }
 
