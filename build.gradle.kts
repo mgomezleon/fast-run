@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.example"
-version = "1.2.1"
+version = "1.2.2"
 
 repositories {
     mavenCentral()
@@ -26,7 +26,7 @@ intellijPlatform {
     pluginConfiguration {
         ideaVersion {
             sinceBuild = "232"
-            untilBuild = "261.*"
+            untilBuild = "262.*"
         }
     }
 

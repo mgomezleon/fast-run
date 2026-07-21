@@ -2,6 +2,11 @@
 
 All notable changes to the "Fast Run - Terminal Command Manager" plugin will be documented in this file.
 
+## [1.2.2] - 2026-07-21
+
+### Fixed
+- 🧩 **Compatibilidad con PyCharm/IntelliJ 2026.2**: se amplía el rango de builds soportados de `232-261.*` a `232-262.*`, corrigiendo el error `Incompatible: requires IDE build 261.* or earlier` al instalar el plugin en PyCharm 2026.2 (build `PY-262.8665.309`) y builds `262.*` en general
+
 ## [1.2.1] - 2026-07-11
 
 ### Added
